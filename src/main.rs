@@ -1,3 +1,6 @@
+pub mod myheritage;
+
 fn main() {
-    println!("Hello, world!");
+    let d = myheritage::myheritage_loader();
+    println!("{:#?}", d)
 }
