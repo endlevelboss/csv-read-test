@@ -1,0 +1,7 @@
+/target
+/.clj-kondo
+/.lsp
+/data
+
+Cargo.lock
+
