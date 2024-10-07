@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use std::io::prelude::*;
 use std::io;
 use std::fs::File;
+use std::cmp;
 use flate2::read::GzDecoder;
+use image::{self, Rgb};
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 struct SnipHeader {
@@ -100,53 +102,148 @@ struct Block {
     end: u32,
 }
 
-fn blocks(sorted_values: &Vec<Snp>) {
+fn blocks(sorted_values: &Vec<Snp>, chromosome: &str) {
+    let chromolength:Vec<u32> = [249250621, 243199373, 198022430, 191154276, 180915260, 171115067, 159138663, 146364022, 141213431, 135534747, 135006516, 133851895, 115169878, 107349540, 102531392, 90354753, 81195210, 78081510, 59128983, 63025520, 48129895, 51304566, 155270560].to_vec();
+    let mych: usize = chromosome.parse().unwrap();
+    let myindex = mych - 1;
+    let mychromolength = chromolength[myindex];
+
+
+
+
     let mut count = 0;
     let mut prev = 0;
-    let mut blockstart = 0;
+    let mut blockstart:u32 = sorted_values.first().unwrap().position;
 
-    let mut blocks: Vec<Block> = Vec::new();
+    let mut green_blocks: Vec<Block> = Vec::new();
+    let mut yellow_blocks: Vec<Block> = Vec::new();
 
-    for snp in sorted_values {
+
+    let sorted = sorted_values;
+
+    for snp in sorted {
         if snp.value >= prev && snp.value > 0 {
             count += 1;
         } else {
             let good_block = if count > 3 {1} else {0};
             let myblock = Block{size: count, value: good_block, start: blockstart, end: snp.position};
-            blocks.push(myblock);                
+            yellow_blocks.push(myblock);                
             count = 0;
             prev = snp.value;
             blockstart = snp.position;
         }
     }
 
-    let mut blocks2: Vec<Block> = Vec::new();
+    for snp in sorted_values {
+        if snp.value >= prev && snp.value == 2 {
+            count += 1;
+        } else {
+            let good_block = if count > 3 {1} else {0};
+            let myblock = Block{size: count, value: good_block, start: blockstart, end: snp.position};
+            green_blocks.push(myblock);                
+            count = 0;
+            prev = snp.value;
+            blockstart = snp.position;
+        }
+    }
+
+    
 
     let mut currentblock = Block{size: 0, value: 0, start: 0, end: 0};
+
+    let mut green_merged: Vec<Block> = Vec::new();
     
-    for b in blocks {
+    for b in green_blocks {
         let tempblock = currentblock.clone();
         if b.value == 1 {
-            if tempblock.value == 0 && b.size > 200 {
+            if tempblock.value == 0 && b.size > 40 {
+                green_merged.push(currentblock);
                 currentblock = b;
-            } else if b.size > 30 {
+            } else if tempblock.value == 1 && b.size > 10 {
+                currentblock.size += b.size;
                 currentblock.end = b.end;
             } else {
-                blocks2.push(currentblock);
+                green_merged.push(currentblock);
                 currentblock = b;
             }
         } else if tempblock.value == 1 {
-            blocks2.push(currentblock);
+            green_merged.push(currentblock);
             currentblock = b;
         } else {
             currentblock = b;
         }
     }
+    green_merged.push(currentblock);
 
-    for b in blocks2 {
-        println!("{} {} {} {}",b.size, b.value, b.start, b.end);
+    green_merged.retain(|x| x.size > 100);
+
+
+    let mut yellow_merged: Vec<Block> = Vec::new();
+    
+    for b in yellow_blocks {
+        let tempblock = currentblock.clone();
+        if b.value == 1 {
+            if tempblock.value == 0 && b.size > 40 {
+                yellow_merged.push(currentblock);
+                currentblock = b;
+            } else if tempblock.value == 1 && b.size > 10 {
+                currentblock.size += b.size;
+                currentblock.end = b.end;
+            } else {
+                yellow_merged.push(currentblock);
+                currentblock = b;
+            }
+        } else if tempblock.value == 1 {
+            yellow_merged.push(currentblock);
+            currentblock = b;
+        } else {
+            currentblock = b;
+        }
     }
+    yellow_merged.push(currentblock);
+
+    yellow_merged.retain(|x| x.size > 100);
+    // for b in blocks2 {
+    //     println!("{} {} {} {}",b.size, b.value, b.start, b.end);
+    // }
+
+    let mut img = image::RgbImage::new(2000,1);
+
+    for i in 0..2000 {
+        img.put_pixel(i, 0, image::Rgb([192, 57, 43]));
+    }
+
+    for b in yellow_merged {
+        let start = (f64::from(b.start) / f64::from(mychromolength) * 2000f64 ) as u32; 
+        let end = (f64::from(b.end) / f64::from(mychromolength) * 2000f64) as u32;
+        let capend = cmp::min(1999, end);
+        
+        for i in start..capend {
+            img.put_pixel(i, 0, image::Rgb([244, 208, 63]));
+        }    
+    }
+
+    for b in green_merged {
+        let start = (f64::from(b.start) / f64::from(mychromolength) * 2000f64 ) as u32; 
+        let end = (f64::from(b.end) / f64::from(mychromolength) * 2000f64) as u32;
+        let capend = cmp::min(1999, end);
+        
+        for i in start..capend {
+            img.put_pixel(i, 0, image::Rgb([39, 174, 96]));
+        }    
+    }
+    let mypath = chromosome.to_string() + ".png";
+    img.save(mypath).unwrap();
     // println!("{:?}", blocks);
+}
+
+
+fn generate(data1: &HashMap<SnipHeader, String>, data2: &HashMap<SnipHeader, String>, chromosome: &str) {
+    let mut myvals = generate_matchvalues(&data1, &data2, &chromosome);
+    myvals.sort();
+
+    blocks(&myvals, &chromosome);
+    
 }
 
 pub fn myzip(path1: &str, path2: &str) {
@@ -162,16 +259,15 @@ pub fn myzip(path1: &str, path2: &str) {
     clean_data(&mut path1_data, &diff);
     clean_data(&mut path2_data, &diff);
 
+    let myvec: Vec<i32> = (1..23).collect();
+    let mychromos: Vec<String> = myvec.into_iter().map(|x| x.to_string()).collect();
 
-    let mut myvals = generate_matchvalues(&path1_data, &path2_data, "5");
-    myvals.sort();
-
-    blocks(&myvals);
+    for ch in mychromos {
+        let mych: &str = &ch;
+        generate(&path1_data, &path2_data, mych);
+    }
     
-    // println!("{:?}", myvals);
     
 
-
-    // println!("Done {}, {}", path1_data.capacity(), path2_data.capacity());
     
 }
